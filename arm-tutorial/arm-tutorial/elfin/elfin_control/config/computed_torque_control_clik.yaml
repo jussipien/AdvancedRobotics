@@ -28,7 +28,7 @@ elfin:
           pid: {p: 100.0, i: 0, d: 20.0}
 
       root_link: world
-      tip_link: elfin_link6
+      tip_link: elfin_link6 #camera_link 
 
       ctr_obj: 1  # ctr_obj = 1: Regulation 
                   # ctr_obj = 2: Tracking

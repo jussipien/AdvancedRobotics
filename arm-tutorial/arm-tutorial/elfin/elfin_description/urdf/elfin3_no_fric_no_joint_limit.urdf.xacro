@@ -438,7 +438,7 @@
             <far>8.0</far>
           </clip>
         </camera>
-        <plugin name="kinect_camera_controller" filename="libgazebo_ros_openni_kinect.so">
+        <plugin name="kinect_camera_controller" filename="libgazebo_ros_openni_kinect.so">ros
           <cameraName>camera</cameraName>
           <alwaysOn>true</alwaysOn>
           <updateRate>0.0</updateRate>
@@ -458,5 +458,19 @@
         </plugin>
       </sensor>
     </gazebo>
+
+    <joint name="optical_joint" type="fixed">
+      <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+      <parent 
+        link="camera_link" />
+      <child
+        link="optical_link" />
+    </joint>
   
+    <link name="optical_link"/>
+
+
+    
 </robot>

@@ -5,4 +5,9 @@
   <param name="robot_description" command="$(find xacro)/xacro.py --inorder '$(find elfin_description)/urdf/elfin3_no_fric_no_joint_limit.urdf.xacro'" />
       
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model elfin3 -param robot_description"/>
+
+  <!-- <param name="marker_description" textfile="/home/jussi/.gazebo/models/aruco_visual_marker_7/model.sdf"/>
+
+  <node name="marker_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-sdf -model aruco_visual_marker_7 -param marker_description"/> -->
+
 </launch>
