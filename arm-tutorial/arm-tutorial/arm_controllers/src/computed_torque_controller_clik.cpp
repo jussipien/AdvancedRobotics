@@ -5,6 +5,11 @@
 #include <pluginlib/class_list_macros.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/Quaternion.h>
+#include <tf/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <urdf/model.h>
 
@@ -40,7 +45,7 @@
 namespace arm_controllers
 {
 
-    // ros::Subscriber sub_aruco_pos;
+    tf::TransformListener listener;
     ros::NodeHandle nh("/aruco_single");
     KDL::JntArray aruco_pos;
     int event = 0;
@@ -51,10 +56,30 @@ namespace arm_controllers
             aruco_pos(0) = msg->pose.position.x;
             aruco_pos(1) = msg->pose.position.y;
             aruco_pos(2) = msg->pose.position.z;
+
+            tf::Quaternion quat;
+            tf::quaternionMsgToTF(msg->pose.orientation, quat);
+
+            // the tf::Quaternion has a method to acess roll pitch and yaw
+            double roll, pitch, yaw;
+            tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
+
+            // the found angles are written in a geometry_msgs::Vector3
+            geometry_msgs::Vector3 rpy;
+            rpy.x = roll;
+            rpy.y = pitch;
+            rpy.z = yaw;
+
+            aruco_pos(3) = rpy.x;
+            aruco_pos(4) = rpy.y;
+            aruco_pos(5) = rpy.z;
             printf("ARUCO POSE: \n\n");
             printf("x: %f, ", aruco_pos(0));
             printf("y: %f, ", aruco_pos(1));
             printf("z: %f, ", aruco_pos(2));
+            printf("roll: %f, ", aruco_pos(3));
+            printf("pitch: %f, ", aruco_pos(4));
+            printf("yaw: %f, ", aruco_pos(5));
             printf("\n\n");
 
             event = 1;
@@ -341,6 +366,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
 
     void update(const ros::Time &time, const ros::Duration &period)
     {
+        
         // ********* 0. Get states from gazebo *********
         // 0.1 sampling time
         double dt = period.toSec();
@@ -372,19 +398,53 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             }
             else if (event == 1) // command from ros subscriber
             {
-                // printf("*** CUSTOM MESSAGE FROM ARUCO ***\n\n");
-                xd_.p(0) = aruco_pos(0);
-                xd_.p(1) = aruco_pos(1);
-                xd_.p(2) = aruco_pos(2);
+                tf::StampedTransform transform;
+                // tf::StampedTransform transform2;
+
+                // try{
+                //     // listener.lookupTransform("/aruco_marker_frame", "/optical_link",
+                //     //     ros::Time(0), transform2);
+                //     listener.lookupTransform("/aruco_marker_frame", "/elfin_base",
+                //         ros::Time(0), transform);
+                //     KDL::JntArray cmd_l;
+                //     cmd_l.resize(6);
+                //     cmd_l(0) = transform.getOrigin().x();
+                //     cmd_l(1) = transform.getOrigin().y();
+                //     cmd_l(2) = transform.getOrigin().z();
+                    
+                //     xd_.p(0) = cmd_l(0);
+                //     xd_.p(1) = cmd_l(1);
+                //     xd_.p(2) = cmd_l(2);
+                //     // KDL::Rotation::RPY
+                //     // cmd_l.data(3) = transform.getRotation().r();
+                //     // cmd_l.data(4) = transform.getRotation().z();
+                //     // cmd_l.data(5) = transform.getRotation().z();
+                //     printf("*** FROM LISTENER TRANSFORM ");
+                //     printf("x: %f, ", cmd_l(0));
+                //     printf("y: %f, ", cmd_l(1));
+                //     printf("z: %f, ", cmd_l(2));
+                //     printf("***\n\n");
+          
+                // } 
+                // catch (tf::TransformException &ex) {
+                //     // printf(transform.stamp_);
+                //     // printf("*** NO!!! ***\n\n");
+                // }
+
+                
                 // xd_.p(0) = x_cmd_(0);
                 // xd_.p(1) = x_cmd_(1);
                 // xd_.p(2) = x_cmd_(2);
+                xd_.p(0) = aruco_pos(0);
+                xd_.p(1) = aruco_pos(1);
+                xd_.p(2) = aruco_pos(2);                
                 // xd_.p(0) = 0.5;
                 // xd_.p(1) = 0.5;
                 // xd_.p(2) = 0.5;
                 
-                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5)));
                 xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
+                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5)));
+                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(aruco_pos(3), aruco_pos(4), aruco_pos(5)));
             }
 
             xd_dot_(0) = 0;
@@ -719,7 +779,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             printf("y_cmd: %f\n", x_cmd_(5));
             printf("\n");
 
-            printf("*** CUSTOM MESSAGE FROM ARUCO ***\n\n");
+            // printf("*** CUSTOM MESSAGE FROM ARUCO ***\n\n");
             // printf("aruco_pos_x: %f, ", aruco_pos(0));
             // printf("aruco_pos_y: %f, ", aruco_pos(1));
             // printf("aruco_pos_z: %f, ", aruco_pos(2));

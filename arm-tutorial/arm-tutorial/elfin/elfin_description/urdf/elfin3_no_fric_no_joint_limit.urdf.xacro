@@ -462,7 +462,7 @@
     <joint name="optical_joint" type="fixed">
       <origin
       xyz="0 0 0"
-      rpy="0 0 0" />
+      rpy=" 0 ${-1.5*PI} 0" />
       <parent 
         link="camera_link" />
       <child
