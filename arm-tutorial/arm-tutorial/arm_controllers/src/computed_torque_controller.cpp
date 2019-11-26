@@ -261,7 +261,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     // *** OWN CODE STARTS HERE ***
     void posAruco(const geometry_msgs::PoseStampedConstPtr &msg)
     {
-        event_ = 1;
+        // event_ = 1;
     }
 
     // *** OWN CODE ENDS HERE ***
@@ -287,23 +287,24 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         }
 
         if (event_ == 0) {
-            // try {
-            //     listener_.lookupTransform("/aruco_marker_frame", "/optical_link",
-            //     ros::Time(0), transform_);
-            //     listener_.lookupTransform("/camera_desired", "/optical_link",
-            //     ros::Time(0), transform2_);
-            //     cmd_l_(0) = transform_.getOrigin().x();
-            //     cmd_l_(1) = transform_.getOrigin().y();
-            //     cmd_l_(2) = transform_.getOrigin().z();
-                
-            //     cmd_l2_(0) = transform_.getOrigin().x();
-            //     cmd_l2_(1) = transform_.getOrigin().y();
-            //     cmd_l2_(2) = transform_.getOrigin().z();
-            // }
-            // catch (tf::TransformException &ex) {
-            //     printf("*** NO TRANSFORMATION!!! ***\n\n");
 
-            // }
+            try {
+                listener_.lookupTransform("/optical_link", "/elfin_base",
+                ros::Time(0), transform_);
+                listener_.lookupTransform("/camera_desired", "/elfin_base",
+                ros::Time(0), transform2_);
+                cmd_l_.p(0) = transform_.getOrigin().x();
+                cmd_l_.p(1) = transform_.getOrigin().y();
+                cmd_l_.p(2) = transform_.getOrigin().z();
+                
+                cmd_l2_.p(0) = transform2_.getOrigin().x();
+                cmd_l2_.p(1) = transform2_.getOrigin().y();
+                cmd_l2_.p(2) = transform2_.getOrigin().z();
+            }
+            catch (tf::TransformException &ex) {
+                printf("*** NO TRANSFORMATION!!! ***\n\n");
+
+            }
             // ********* 1. Desired Trajecoty in Joint Space *********
 
             for (size_t i = 0; i < n_joints_; i++)
@@ -350,7 +351,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
                 cmd_l_.p(1) = transform_.getOrigin().y();
                 cmd_l_.p(2) = transform_.getOrigin().z();
                 
-                cmd_l2_.p(0) = transform_.getOrigin().x();
+                cmd_l2_.p(0) = transform2_.getOrigin().x();
                 cmd_l2_.p(1) = transform2_.getOrigin().y();
                 cmd_l2_.p(2) = transform2_.getOrigin().z();
             }
@@ -358,6 +359,16 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
                 printf("*** NO TRANSFORMATION!!! ***\n\n");
 
             }
+
+            ex_temp_ = diff(cmd_l_, cmd_l2_);   
+
+            // KDL::Twist -> Eigen::Matrix + Kp gain
+            ex_(0) = ex_temp_(0) * Kp_.data(0);
+            ex_(1) = ex_temp_(1) * Kp_.data(1);
+            ex_(2) = ex_temp_(2) * Kp_.data(2);
+            ex_(3) = ex_temp_(3) * Kp_.data(3);
+            ex_(4) = ex_temp_(4) * Kp_.data(4);
+            ex_(5) = ex_temp_(5) * Kp_.data(5);
 
             // fk_pos_solver_->JntToCart(q_, x_);
 
