@@ -14,6 +14,25 @@
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chaindynparam.hpp>              // inverse dynamics
 
+// *** OWN CODE STARTS ***
+
+#define num_taskspace 6
+
+#include <std_msgs/Float64MultiArray.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/Quaternion.h>
+
+#include <kdl/chainjnttojacsolver.hpp>        // jacobian
+#include <kdl/chainfksolverpos_recursive.hpp> // forward kinematics
+
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
+
+
+/// *** OWN CODE ENDS ***
+
 #include <boost/scoped_ptr.hpp>
 #include <boost/lexical_cast.hpp>
 
@@ -179,6 +198,21 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
 
+        // *** OWN CODE STARTS *** 
+        cmd_l_.resize(kdl_chain_.getNrOfJoints());
+
+        J_.resize(kdl_chain_.getNrOfJoints());
+        // 4.4 jacobian solver 초기화
+        jnt_to_jac_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
+        // 4.5 forward kinematics solver 초기화
+        fk_pos_solver_.reset(new KDL::ChainFkSolverPos_recursive(kdl_chain_));
+
+        // marker subscriber
+        event_ = 0;
+        ros::NodeHandle nh("/aruco_single");
+        sub_aruco_pos_ = nh.subscribe<geometry_msgs::PoseStamped>("pose", 1, &Computed_Torque_Controller::posAruco, this);
+        // *** OWN CODE ENDS ***
+
         // ********* 5. 각종 변수 초기화 *********
 
         // 5.1 Vector 초기화 (사이즈 정의 및 값 0)
@@ -223,6 +257,14 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         }
     }
 
+    // *** OWN CODE STARTS HERE ***
+    void posAruco(const geometry_msgs::PoseStampedConstPtr &msg)
+    {
+        // event_ = 1;
+    }
+
+    // *** OWN CODE ENDS HERE ***
+
     void starting(const ros::Time &time)
     {
         t = 0.0;
@@ -243,30 +285,91 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             qdot_(i) = joints_[i].getVelocity();
         }
 
-        // ********* 1. Desired Trajecoty in Joint Space *********
+        if (event_ == 0) {
+            try {
+                listener_.lookupTransform("/camera_desired", "/optical_link",
+                ros::Time(0), transform_);
+                cmd_l_(0) = transform_.getOrigin().x();
+                cmd_l_(1) = transform_.getOrigin().y();
+                cmd_l_(2) = transform_.getOrigin().z();
+            }
+            catch (tf::TransformException &ex) {
+                printf("*** NO TRANSFORMATION!!! ***\n\n");
 
-        for (size_t i = 0; i < n_joints_; i++)
-        {
-            qd_ddot_(i) = -M_PI * M_PI / 4 * 45 * KDL::deg2rad * sin(M_PI / 2 * t); 
-            qd_dot_(i) = M_PI / 2 * 45 * KDL::deg2rad * cos(M_PI / 2 * t);          
-            qd_(i) = 45 * KDL::deg2rad * sin(M_PI / 2* t);
+            }
+            // ********* 1. Desired Trajecoty in Joint Space *********
+
+            for (size_t i = 0; i < n_joints_; i++)
+            {
+                qd_ddot_(i) = -M_PI * M_PI / 4 * 90 * KDL::deg2rad * sin(M_PI / 2); 
+                qd_dot_(i) = M_PI / 2 * 90 * KDL::deg2rad * cos(M_PI / 2);          
+                qd_(i) = 90 * KDL::deg2rad * sin(M_PI / 2);
+            }
+
+            // ********* 2. Motion Controller in Joint Space*********
+            // *** 2.1 Error Definition in Joint Space ***
+            e_.data = qd_.data - q_.data;
+            e_dot_.data = qd_dot_.data - qdot_.data;
+            e_int_.data = qd_.data - q_.data; // (To do: e_int 업데이트 필요요)
+
+            // *** 2.2 Compute model(M,C,G) ***
+            id_solver_->JntToMass(q_, M_);
+            id_solver_->JntToCoriolis(q_, qdot_, C_);
+            id_solver_->JntToGravity(q_, G_);
+
+            // *** 2.3 Apply Torque Command to Actuator ***
+            aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+            comp_d_.data = C_.data + G_.data;
+            tau_d_.data = aux_d_.data + comp_d_.data;
         }
+        
+        
+        else if (event_ == 1) {
+            // *** OWN CODE ***
+            
+            // TODO Transform from marker
+            // wiki.ros.org/tf/Tutorials/Adding%20a%20frame%20%28C%2B%2B%29
+            // transform_.setOrigin( tf::Vector3(0.0, 0.0, 1.0) );
+            // transform_.setRotation( tf::Quaternion(0, 0, 0, 1) );
+            // br_.sendTransform(tf::StampedTransform(transform_, ros::Time(0), "optical_link", "camera_desired"));
+         
 
-        // ********* 2. Motion Controller in Joint Space*********
-        // *** 2.1 Error Definition in Joint Space ***
-        e_.data = qd_.data - q_.data;
-        e_dot_.data = qd_dot_.data - qdot_.data;
-        e_int_.data = qd_.data - q_.data; // (To do: e_int 업데이트 필요요)
 
-        // *** 2.2 Compute model(M,C,G) ***
-        id_solver_->JntToMass(q_, M_);
-        id_solver_->JntToCoriolis(q_, qdot_, C_);
-        id_solver_->JntToGravity(q_, G_);
+            // listener.lookupTransform("/aruco_marker_frame", "/elfin_base",
+            // ros::Time(0), transform);
 
-        // *** 2.3 Apply Torque Command to Actuator ***
-        aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
-        comp_d_.data = C_.data + G_.data;
-        tau_d_.data = aux_d_.data + comp_d_.data;
+            fk_pos_solver_->JntToCart(q_, x_);
+
+            // TODO xc - xo in slides (xo = x_ above)
+
+            // TODO value before Kp gain in slides
+            // xd_ offset from aruco_marker???
+            // ex_temp_ = diff(x_, xd_);
+
+            // KDL::Twist -> Eigen::Matrix + Kp gain
+            ex_(0) = ex_temp_(0) * Kp_.data(0);
+            ex_(1) = ex_temp_(1) * Kp_.data(1);
+            ex_(2) = ex_temp_(2) * Kp_.data(2);
+            ex_(3) = ex_temp_(3) * Kp_.data(3);
+            ex_(4) = ex_temp_(4) * Kp_.data(4);
+            ex_(5) = ex_temp_(5) * Kp_.data(5);
+
+            // *** 2.1 computing Jacobian J(q) ***
+            jnt_to_jac_solver_->JntToJac(q_, J_);
+
+            // Joint velocity in cartesian space (xdot)
+            e_dot_.data = J_.data * qdot_.data;
+
+            // *** 2.2 Compute model(M,C,G) ***
+            // id_solver_->JntToMass(q_, M_);
+            // id_solver_->JntToCoriolis(q_, qdot_, C_);
+            id_solver_->JntToGravity(q_, G_);
+
+            aux_d_.data = ex_ + Kd_.data.cwiseProduct(e_dot_.data);
+            tau_d_.data = J_.data.transpose() * aux_d_.data + G_.data;
+
+        }
+        
 
         for (int i = 0; i < n_joints_; i++)
         {
@@ -393,6 +496,16 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("t = %f\n", t);
             printf("\n");
 
+            printf("*** EVENT EVENT EVENT  ***\n");
+            printf("EVENT = %f\n", event_);
+            printf("\n");
+
+            printf("*** FROM LISTENER TRANSFORM ");
+            printf("x: %f, ", cmd_l_(0));
+            printf("y: %f, ", cmd_l_(1));
+            printf("z: %f, ", cmd_l_(2));
+            printf("***\n\n");
+
             printf("*** Desired State in Joint Space (unit: deg) ***\n");
             printf("qd_(0): %f, ", qd_(0)*R2D);
             printf("qd_(1): %f, ", qd_(1)*R2D);
@@ -448,7 +561,36 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     KDL::Vector gravity_;
 
     // kdl solver
-    boost::scoped_ptr<KDL::ChainDynParam> id_solver_;                  // Solver To compute the inverse dynamics
+    boost::scoped_ptr<KDL::ChainDynParam> id_solver_;                 // Solver To compute the inverse dynamics
+    
+    // *** OWN CODE STARTS ***
+    boost::scoped_ptr<KDL::ChainJntToJacSolver> jnt_to_jac_solver_; //Solver to compute the jacobian
+    boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_pos_solver_; //Solver to compute the forward kinematics (position)
+
+    // KDL::Twist 
+    Eigen::Matrix<double, num_taskspace, 1> ex_;
+    KDL::Twist ex_temp_;
+
+    // Task Space State
+    KDL::Frame x_;
+
+    // Transform from marker
+    int event_;
+    tf::TransformListener listener_;
+
+
+    ros::Subscriber sub_aruco_pos_;
+
+    tf::TransformBroadcaster br_;
+    tf::StampedTransform transform_;
+
+    KDL::JntArray cmd_l_;
+
+    // Jacobian
+    KDL::Jacobian J_;
+
+    // *** OWN CODE ENDS ***
+
 
     // Joint Space State
     KDL::JntArray qd_, qd_dot_, qd_ddot_;
