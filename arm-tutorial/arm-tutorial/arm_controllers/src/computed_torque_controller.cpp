@@ -344,7 +344,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             try {
                 listener_.lookupTransform("/aruco_marker_frame", "/optical_link",
                 ros::Time(0), transform_);
-                listener_.lookupTransform("/camera_desired", "/optical_link",
+                listener_.lookupTransform("/aruco_marker_frame", "/camera_desired",
                 ros::Time(0), transform2_);
                 cmd_l_.p(0) = transform_.getOrigin().x();
                 cmd_l_.p(1) = transform_.getOrigin().y();
@@ -359,7 +359,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
             }
 
-            fk_pos_solver_->JntToCart(q_, x_);
+            // fk_pos_solver_->JntToCart(q_, x_);
 
             // TODO xc - xo in slides (xo = x_ above)
 
@@ -390,6 +390,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
             aux_d_.data = ex_ + Kd_.data.cwiseProduct(e_dot_.data);
             tau_d_.data = J_.data.transpose() * aux_d_.data + G_.data;
+            // event_ = 1;
 
         }
         
@@ -529,32 +530,44 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("z: %f, ", cmd_l_.p(2));
             printf("***\n\n");
 
-            printf("*** Desired State in Joint Space (unit: deg) ***\n");
-            printf("qd_(0): %f, ", qd_(0)*R2D);
-            printf("qd_(1): %f, ", qd_(1)*R2D);
-            printf("qd_(2): %f, ", qd_(2)*R2D);
-            printf("qd_(3): %f, ", qd_(3)*R2D);
-            printf("qd_(4): %f, ", qd_(4)*R2D);
-            printf("qd_(5): %f\n", qd_(5)*R2D);
+            // printf("*** Desired State in Joint Space (unit: deg) ***\n");
+            // printf("qd_(0): %f, ", qd_(0)*R2D);
+            // printf("qd_(1): %f, ", qd_(1)*R2D);
+            // printf("qd_(2): %f, ", qd_(2)*R2D);
+            // printf("qd_(3): %f, ", qd_(3)*R2D);
+            // printf("qd_(4): %f, ", qd_(4)*R2D);
+            // printf("qd_(5): %f\n", qd_(5)*R2D);
+            // printf("\n");
+
+            // printf("*** Actual State in Joint Space (unit: deg) ***\n");
+            // printf("q_(0): %f, ", q_(0) * R2D);
+            // printf("q_(1): %f, ", q_(1) * R2D);
+            // printf("q_(2): %f, ", q_(2) * R2D);
+            // printf("q_(3): %f, ", q_(3) * R2D);
+            // printf("q_(4): %f, ", q_(4) * R2D);
+            // printf("q_(5): %f\n", q_(5) * R2D);
+            // printf("\n");
+
+
+            // printf("*** Joint Space Error (unit: deg)  ***\n");
+            // printf("%f, ", R2D * e_(0));
+            // printf("%f, ", R2D * e_(1));
+            // printf("%f, ", R2D * e_(2));
+            // printf("%f, ", R2D * e_(3));
+            // printf("%f, ", R2D * e_(4));
+            // printf("%f\n", R2D * e_(5));
+            // printf("\n");
+
+            printf("*** Desired Position in Task Space (unit: m) ***\n");
+            printf("xd: %f, ", cmd_l2_.p(0));
+            printf("yd: %f, ", cmd_l2_.p(1));
+            printf("zd: %f\n", cmd_l2_.p(2));
             printf("\n");
 
-            printf("*** Actual State in Joint Space (unit: deg) ***\n");
-            printf("q_(0): %f, ", q_(0) * R2D);
-            printf("q_(1): %f, ", q_(1) * R2D);
-            printf("q_(2): %f, ", q_(2) * R2D);
-            printf("q_(3): %f, ", q_(3) * R2D);
-            printf("q_(4): %f, ", q_(4) * R2D);
-            printf("q_(5): %f\n", q_(5) * R2D);
-            printf("\n");
-
-
-            printf("*** Joint Space Error (unit: deg)  ***\n");
-            printf("%f, ", R2D * e_(0));
-            printf("%f, ", R2D * e_(1));
-            printf("%f, ", R2D * e_(2));
-            printf("%f, ", R2D * e_(3));
-            printf("%f, ", R2D * e_(4));
-            printf("%f\n", R2D * e_(5));
+            printf("*** Actual Position in Task Space (unit: m) ***\n");
+            printf("x: %f, ", cmd_l_.p(0));
+            printf("y: %f, ", cmd_l_.p(1));
+            printf("z: %f\n", cmd_l_.p(2));
             printf("\n");
 
 
