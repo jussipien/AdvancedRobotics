@@ -470,7 +470,7 @@
     </joint>
   
     <link name="optical_link"/>
-
+<!-- 
     <joint name="virtual_joint" type="fixed">
       <origin
       xyz="0 0 0"
@@ -481,7 +481,7 @@
         link="camera_desired" />
     </joint>
 
-    <link name="camera_desired"/>
+    <link name="camera_desired"/> -->
 
 
 

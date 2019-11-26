@@ -199,7 +199,8 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
 
         // *** OWN CODE STARTS *** 
-        cmd_l_.resize(kdl_chain_.getNrOfJoints());
+        // cmd_l_.resize(kdl_chain_.getNrOfJoints());
+        // cmd_l2_.resize(kdl_chain_.getNrOfJoints());
 
         J_.resize(kdl_chain_.getNrOfJoints());
         // 4.4 jacobian solver 초기화
@@ -260,7 +261,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     // *** OWN CODE STARTS HERE ***
     void posAruco(const geometry_msgs::PoseStampedConstPtr &msg)
     {
-        // event_ = 1;
+        event_ = 1;
     }
 
     // *** OWN CODE ENDS HERE ***
@@ -286,17 +287,23 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         }
 
         if (event_ == 0) {
-            try {
-                listener_.lookupTransform("/camera_desired", "/optical_link",
-                ros::Time(0), transform_);
-                cmd_l_(0) = transform_.getOrigin().x();
-                cmd_l_(1) = transform_.getOrigin().y();
-                cmd_l_(2) = transform_.getOrigin().z();
-            }
-            catch (tf::TransformException &ex) {
-                printf("*** NO TRANSFORMATION!!! ***\n\n");
+            // try {
+            //     listener_.lookupTransform("/aruco_marker_frame", "/optical_link",
+            //     ros::Time(0), transform_);
+            //     listener_.lookupTransform("/camera_desired", "/optical_link",
+            //     ros::Time(0), transform2_);
+            //     cmd_l_(0) = transform_.getOrigin().x();
+            //     cmd_l_(1) = transform_.getOrigin().y();
+            //     cmd_l_(2) = transform_.getOrigin().z();
+                
+            //     cmd_l2_(0) = transform_.getOrigin().x();
+            //     cmd_l2_(1) = transform_.getOrigin().y();
+            //     cmd_l2_(2) = transform_.getOrigin().z();
+            // }
+            // catch (tf::TransformException &ex) {
+            //     printf("*** NO TRANSFORMATION!!! ***\n\n");
 
-            }
+            // }
             // ********* 1. Desired Trajecoty in Joint Space *********
 
             for (size_t i = 0; i < n_joints_; i++)
@@ -334,9 +341,23 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             // br_.sendTransform(tf::StampedTransform(transform_, ros::Time(0), "optical_link", "camera_desired"));
          
 
+            try {
+                listener_.lookupTransform("/aruco_marker_frame", "/optical_link",
+                ros::Time(0), transform_);
+                listener_.lookupTransform("/camera_desired", "/optical_link",
+                ros::Time(0), transform2_);
+                cmd_l_.p(0) = transform_.getOrigin().x();
+                cmd_l_.p(1) = transform_.getOrigin().y();
+                cmd_l_.p(2) = transform_.getOrigin().z();
+                
+                cmd_l2_.p(0) = transform_.getOrigin().x();
+                cmd_l2_.p(1) = transform2_.getOrigin().y();
+                cmd_l2_.p(2) = transform2_.getOrigin().z();
+            }
+            catch (tf::TransformException &ex) {
+                printf("*** NO TRANSFORMATION!!! ***\n\n");
 
-            // listener.lookupTransform("/aruco_marker_frame", "/elfin_base",
-            // ros::Time(0), transform);
+            }
 
             fk_pos_solver_->JntToCart(q_, x_);
 
@@ -345,6 +366,8 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             // TODO value before Kp gain in slides
             // xd_ offset from aruco_marker???
             // ex_temp_ = diff(x_, xd_);
+
+            ex_temp_ = diff(cmd_l_, cmd_l2_);   
 
             // KDL::Twist -> Eigen::Matrix + Kp gain
             ex_(0) = ex_temp_(0) * Kp_.data(0);
@@ -501,9 +524,9 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("\n");
 
             printf("*** FROM LISTENER TRANSFORM ");
-            printf("x: %f, ", cmd_l_(0));
-            printf("y: %f, ", cmd_l_(1));
-            printf("z: %f, ", cmd_l_(2));
+            printf("x: %f, ", cmd_l_.p(0));
+            printf("y: %f, ", cmd_l_.p(1));
+            printf("z: %f, ", cmd_l_.p(2));
             printf("***\n\n");
 
             printf("*** Desired State in Joint Space (unit: deg) ***\n");
@@ -583,8 +606,11 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
     tf::TransformBroadcaster br_;
     tf::StampedTransform transform_;
+    tf::StampedTransform transform2_;
 
-    KDL::JntArray cmd_l_;
+
+    KDL::Frame cmd_l_;
+    KDL::Frame cmd_l2_;
 
     // Jacobian
     KDL::Jacobian J_;
