@@ -203,6 +203,8 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         // cmd_l2_.resize(kdl_chain_.getNrOfJoints());
 
         J_.resize(kdl_chain_.getNrOfJoints());
+        G2_.resize(kdl_chain_.getNrOfJoints());
+
         // 4.4 jacobian solver 초기화
         jnt_to_jac_solver_.reset(new KDL::ChainJntToJacSolver(kdl_chain_));
         // 4.5 forward kinematics solver 초기화
@@ -212,6 +214,9 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         event_ = 0;
         ros::NodeHandle nh("/aruco_single");
         sub_aruco_pos_ = nh.subscribe<geometry_msgs::PoseStamped>("pose", 1, &Computed_Torque_Controller::posAruco, this);
+        
+        tau_d2_.data = Eigen::VectorXd::Zero(n_joints_);
+
         // *** OWN CODE ENDS ***
 
         // ********* 5. 각종 변수 초기화 *********
@@ -261,7 +266,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     // *** OWN CODE STARTS HERE ***
     void posAruco(const geometry_msgs::PoseStampedConstPtr &msg)
     {
-        // event_ = 1;
+        event_ = 1;
     }
 
     // *** OWN CODE ENDS HERE ***
@@ -288,47 +293,47 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         if (event_ == 0) {
 
-            try {
-                listener_.lookupTransform("/optical_link", "/elfin_base",
-                ros::Time(0), transform_);
-                listener_.lookupTransform("/camera_desired", "/elfin_base",
-                ros::Time(0), transform2_);
-                cmd_l_.p(0) = transform_.getOrigin().x();
-                cmd_l_.p(1) = transform_.getOrigin().y();
-                cmd_l_.p(2) = transform_.getOrigin().z();
+        //     try {
+        //         listener_.lookupTransform("/optical_link", "/elfin_base",
+        //         ros::Time(0), transform_);
+        //         listener_.lookupTransform("/camera_desired", "/elfin_base",
+        //         ros::Time(0), transform2_);
+        //         cmd_l_.p(0) = transform_.getOrigin().x();
+        //         cmd_l_.p(1) = transform_.getOrigin().y();
+        //         cmd_l_.p(2) = transform_.getOrigin().z();
                 
-                cmd_l2_.p(0) = transform2_.getOrigin().x();
-                cmd_l2_.p(1) = transform2_.getOrigin().y();
-                cmd_l2_.p(2) = transform2_.getOrigin().z();
-            }
-            catch (tf::TransformException &ex) {
-                printf("*** NO TRANSFORMATION!!! ***\n\n");
+        //         cmd_l2_.p(0) = transform2_.getOrigin().x();
+        //         cmd_l2_.p(1) = transform2_.getOrigin().y();
+        //         cmd_l2_.p(2) = transform2_.getOrigin().z();
+        //     }
+        //     catch (tf::TransformException &ex) {
+        //         printf("*** NO TRANSFORMATION!!! ***\n\n");
 
-            }
+        //     }
             // ********* 1. Desired Trajecoty in Joint Space *********
 
-            for (size_t i = 0; i < n_joints_; i++)
-            {
-                qd_ddot_(i) = -M_PI * M_PI / 4 * 90 * KDL::deg2rad * sin(M_PI / 2); 
-                qd_dot_(i) = M_PI / 2 * 90 * KDL::deg2rad * cos(M_PI / 2);          
-                qd_(i) = 90 * KDL::deg2rad * sin(M_PI / 2);
-            }
+            // for (size_t i = 0; i < n_joints_; i++)
+            // {
+            //     qd_ddot_(i) = -M_PI * M_PI / 4 * 90 * KDL::deg2rad * sin(M_PI / 2); 
+            //     qd_dot_(i) = M_PI / 2 * 90 * KDL::deg2rad * cos(M_PI / 2);          
+            //     qd_(i) = 90 * KDL::deg2rad * sin(M_PI / 2);
+            // }
 
-            // ********* 2. Motion Controller in Joint Space*********
-            // *** 2.1 Error Definition in Joint Space ***
-            e_.data = qd_.data - q_.data;
-            e_dot_.data = qd_dot_.data - qdot_.data;
-            e_int_.data = qd_.data - q_.data; // (To do: e_int 업데이트 필요요)
+            // // ********* 2. Motion Controller in Joint Space*********
+            // // *** 2.1 Error Definition in Joint Space ***
+            // e_.data = qd_.data - q_.data;
+            // e_dot_.data = qd_dot_.data - qdot_.data;
+            // e_int_.data = qd_.data - q_.data; // (To do: e_int 업데이트 필요요)
 
-            // *** 2.2 Compute model(M,C,G) ***
-            id_solver_->JntToMass(q_, M_);
-            id_solver_->JntToCoriolis(q_, qdot_, C_);
-            id_solver_->JntToGravity(q_, G_);
+            // // *** 2.2 Compute model(M,C,G) ***
+            // id_solver_->JntToMass(q_, M_);
+            // id_solver_->JntToCoriolis(q_, qdot_, C_);
+            // id_solver_->JntToGravity(q_, G_);
 
-            // *** 2.3 Apply Torque Command to Actuator ***
-            aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
-            comp_d_.data = C_.data + G_.data;
-            tau_d_.data = aux_d_.data + comp_d_.data;
+            // // *** 2.3 Apply Torque Command to Actuator ***
+            // aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+            // comp_d_.data = C_.data + G_.data;
+            // tau_d_.data = aux_d_.data + comp_d_.data;
         }
         
         
@@ -337,40 +342,11 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             
             // TODO Transform from marker
             // wiki.ros.org/tf/Tutorials/Adding%20a%20frame%20%28C%2B%2B%29
-            // transform_.setOrigin( tf::Vector3(0.0, 0.0, 1.0) );
-            // transform_.setRotation( tf::Quaternion(0, 0, 0, 1) );
-            // br_.sendTransform(tf::StampedTransform(transform_, ros::Time(0), "optical_link", "camera_desired"));
          
 
-            try {
-                listener_.lookupTransform("/aruco_marker_frame", "/optical_link",
-                ros::Time(0), transform_);
-                listener_.lookupTransform("/aruco_marker_frame", "/camera_desired",
-                ros::Time(0), transform2_);
-                cmd_l_.p(0) = transform_.getOrigin().x();
-                cmd_l_.p(1) = transform_.getOrigin().y();
-                cmd_l_.p(2) = transform_.getOrigin().z();
-                
-                cmd_l2_.p(0) = transform2_.getOrigin().x();
-                cmd_l2_.p(1) = transform2_.getOrigin().y();
-                cmd_l2_.p(2) = transform2_.getOrigin().z();
-            }
-            catch (tf::TransformException &ex) {
-                printf("*** NO TRANSFORMATION!!! ***\n\n");
 
-            }
 
-            ex_temp_ = diff(cmd_l_, cmd_l2_);   
-
-            // KDL::Twist -> Eigen::Matrix + Kp gain
-            ex_(0) = ex_temp_(0) * Kp_.data(0);
-            ex_(1) = ex_temp_(1) * Kp_.data(1);
-            ex_(2) = ex_temp_(2) * Kp_.data(2);
-            ex_(3) = ex_temp_(3) * Kp_.data(3);
-            ex_(4) = ex_temp_(4) * Kp_.data(4);
-            ex_(5) = ex_temp_(5) * Kp_.data(5);
-
-            // fk_pos_solver_->JntToCart(q_, x_);
+            fk_pos_solver_->JntToCart(q_, x_);
 
             // TODO xc - xo in slides (xo = x_ above)
 
@@ -378,9 +354,31 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             // xd_ offset from aruco_marker???
             // ex_temp_ = diff(x_, xd_);
 
-            ex_temp_ = diff(cmd_l_, cmd_l2_);   
-
             // KDL::Twist -> Eigen::Matrix + Kp gain
+
+            // When aruco is detected
+            if (event_ == 1) {
+                try {
+                    listener_.lookupTransform("/elfin_base", "/optical_link",
+                    ros::Time(0), transform_);
+                    listener_.lookupTransform("/elfin_base", "/camera_desired",
+                    ros::Time(0), transform2_);
+                    cmd_l_.p(0) = transform_.getOrigin().x();
+                    cmd_l_.p(1) = transform_.getOrigin().y();
+                    cmd_l_.p(2) = transform_.getOrigin().z();
+                    
+                    cmd_l2_.p(0) = transform2_.getOrigin().x();
+                    cmd_l2_.p(1) = transform2_.getOrigin().y();
+                    cmd_l2_.p(2) = transform2_.getOrigin().z();
+
+                    ex_temp_ = diff(cmd_l_, cmd_l2_);   
+
+                    }
+                catch (tf::TransformException &ex) {
+                    printf("*** NO TRANSFORMATION!!! ***\n\n");
+
+                }
+
             ex_(0) = ex_temp_(0) * Kp_.data(0);
             ex_(1) = ex_temp_(1) * Kp_.data(1);
             ex_(2) = ex_temp_(2) * Kp_.data(2);
@@ -397,11 +395,41 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             // *** 2.2 Compute model(M,C,G) ***
             // id_solver_->JntToMass(q_, M_);
             // id_solver_->JntToCoriolis(q_, qdot_, C_);
-            id_solver_->JntToGravity(q_, G_);
+            id_solver_->JntToGravity(q_, G2_);
 
-            aux_d_.data = ex_ + Kd_.data.cwiseProduct(e_dot_.data);
-            tau_d_.data = J_.data.transpose() * aux_d_.data + G_.data;
-            // event_ = 1;
+            aux_d2_.data = ex_ + Kd_.data.cwiseProduct(e_dot_.data);
+            tau_d2_.data = J_.data.transpose() * aux_d2_.data + G2_.data;
+
+            }
+            // When aruco is not detected
+            else if ( event_ == 0 ) {
+
+                for (size_t i = 0; i < n_joints_; i++)
+                {
+                    qd_ddot_(i) = -M_PI * M_PI / 4 * 90 * KDL::deg2rad * sin(M_PI / 2); 
+                    qd_dot_(i) = M_PI / 2 * 90 * KDL::deg2rad * cos(M_PI / 2);          
+                    qd_(i) = 90 * KDL::deg2rad * sin(M_PI / 2);
+                }
+
+                // ********* 2. Motion Controller in Joint Space*********
+                // *** 2.1 Error Definition in Joint Space ***
+                e_.data = qd_.data - q_.data;
+                e_dot_.data = qd_dot_.data - qdot_.data;
+                e_int_.data = qd_.data - q_.data; // (To do: e_int 업데이트 필요요)
+
+                // *** 2.2 Compute model(M,C,G) ***
+                id_solver_->JntToMass(q_, M_);
+                id_solver_->JntToCoriolis(q_, qdot_, C_);
+                id_solver_->JntToGravity(q_, G_);
+
+                // *** 2.3 Apply Torque Command to Actuator ***
+                aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+                comp_d_.data = C_.data + G_.data;
+                tau_d_.data = aux_d_.data + comp_d_.data;
+
+
+            } 
+            
 
         }
         
@@ -614,6 +642,8 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     boost::scoped_ptr<KDL::ChainJntToJacSolver> jnt_to_jac_solver_; //Solver to compute the jacobian
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_pos_solver_; //Solver to compute the forward kinematics (position)
 
+    KDL::JntArray G2_;              // gravity torque vector
+
     // KDL::Twist 
     Eigen::Matrix<double, num_taskspace, 1> ex_;
     KDL::Twist ex_temp_;
@@ -632,12 +662,15 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     tf::StampedTransform transform_;
     tf::StampedTransform transform2_;
 
-
     KDL::Frame cmd_l_;
     KDL::Frame cmd_l2_;
 
     // Jacobian
     KDL::Jacobian J_;
+
+    // Input
+    KDL::JntArray aux_d2_;
+    KDL::JntArray tau_d2_;
 
     // *** OWN CODE ENDS ***
 
